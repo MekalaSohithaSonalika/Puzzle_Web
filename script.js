@@ -402,19 +402,18 @@ function displayGrid(grid, width, height) {
     const trimmedHeight = trimmedGrid.length;
     const trimmedWidth = trimmedGrid[0].length;
     
-    // Create main puzzle container
-    const puzzleContainer = document.createElement('div');
-    puzzleContainer.style.border = '1px solid #ddd';
-    puzzleContainer.style.padding = '20px';
-    puzzleContainer.style.marginBottom = '20px';
-    puzzleContainer.style.position = 'relative'; // Add this line
-    
-    // Add download button
+    // Create a header container for positioning buttons
+    const headerContainer = document.createElement('div');
+    headerContainer.style.display = 'flex';
+    headerContainer.style.justifyContent = 'flex-end'; // Align to right
+    headerContainer.style.width = '100%';
+    headerContainer.style.marginBottom = '20px';
+    headerContainer.style.marginTop = '20px'; // Add some top margin to move button down
+    container.appendChild(headerContainer);
+
+    // Create download button and position it at the right corner
     const downloadBtn = document.createElement('button');
     downloadBtn.textContent = 'Download PDF';
-    downloadBtn.style.position = 'absolute';
-    downloadBtn.style.top = '10px';
-    downloadBtn.style.right = '10px';
     downloadBtn.style.padding = '8px 16px';
     downloadBtn.style.fontSize = '14px';
     downloadBtn.style.backgroundColor = '#4CAF50';
@@ -422,37 +421,14 @@ function displayGrid(grid, width, height) {
     downloadBtn.style.border = 'none';
     downloadBtn.style.borderRadius = '4px';
     downloadBtn.style.cursor = 'pointer';
+    headerContainer.appendChild(downloadBtn); // Add button to header container
     
-    downloadBtn.addEventListener('click', () => {
-        // Configure pdf options
-        const opt = {
-            margin: 10,
-            filename: 'letter_puzzle.pdf',
-            image: { type: 'jpeg', quality: 0.98 },
-            html2canvas: { scale: 2 },
-            jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-        };
-
-        // Get a clone of puzzleContainer without the download button
-        const containerClone = puzzleContainer.cloneNode(true);
-        const downloadBtnClone = containerClone.querySelector('button');
-        if (downloadBtnClone) {
-            downloadBtnClone.remove();
-        }
-
-        // Create a temporary container for PDF generation
-        const tempContainer = document.createElement('div');
-        tempContainer.style.padding = '20px';
-        tempContainer.appendChild(containerClone);
-        document.body.appendChild(tempContainer);
-
-        // Generate and download PDF
-        html2pdf().set(opt).from(tempContainer).save().then(() => {
-            document.body.removeChild(tempContainer);
-        });
-    });
-
-    puzzleContainer.appendChild(downloadBtn);
+    // Create main puzzle container
+    const puzzleContainer = document.createElement('div');
+    puzzleContainer.style.border = '1px solid #ddd';
+    puzzleContainer.style.padding = '20px';
+    puzzleContainer.style.marginBottom = '20px';
+    puzzleContainer.style.clear = 'both'; // Clear the float
     
     // Add grid size text
     const sizeText = document.createElement('div');
@@ -539,6 +515,29 @@ function displayGrid(grid, width, height) {
 
     // Add puzzle container to main container
     container.appendChild(puzzleContainer);
+    
+    // Update PDF download event listener
+    downloadBtn.addEventListener('click', () => {
+        // Configure pdf options
+        const opt = {
+            margin: 10,
+            filename: 'letter_puzzle.pdf',
+            image: { type: 'jpeg', quality: 0.98 },
+            html2canvas: { scale: 2 },
+            jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+        };
+
+        // Create a clone of the puzzle container for PDF generation
+        const tempContainer = document.createElement('div');
+        tempContainer.style.padding = '20px';
+        tempContainer.appendChild(puzzleContainer.cloneNode(true));
+        document.body.appendChild(tempContainer);
+
+        // Generate and download PDF
+        html2pdf().set(opt).from(tempContainer).save().then(() => {
+            document.body.removeChild(tempContainer);
+        });
+    });
 
     // Create View Solution button outside the puzzle container
     const viewSolutionBtn = document.createElement('button');
