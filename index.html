@@ -2,15 +2,23 @@
 <html>
 <head>
     <link rel="stylesheet" href="styles.css">
-    <title>Letter Grid Generator</title>
+    <title>Alphabetical Polynomio Fitting Puzzles</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 </head>
 <body>
+    <div class="header">
+        <h1>Alphabetical Polynomio Fitting Puzzles</h1>
+        <div class="description">
+            <p>Welcome to Alphabetical Polynomio Fitting Puzzles! This interactive puzzle generator creates engaging challenges where you need to fit letter shapes into a grid.</p>
+            <p>Each letter is represented as a unique polynomio shape, and your task is to arrange these shapes to fit perfectly within the given grid. The puzzles help develop spatial reasoning and problem-solving skills.</p>
+            <p class="instruction">Please enter a word below to generate your custom puzzle:</p>
+        </div>
+    </div>
     <div class="controls">
         <input type="text" id="wordInput" placeholder="Enter a word" maxlength="20">
         <button id="generateBtn">Generate Grid</button>
     </div>
-    <div id="gridContainer"></div>
+    <div id="gridContainer" style="display: none;"></div>
 
     <script src="script.js"></script>
 </body>
