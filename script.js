@@ -53,121 +53,98 @@ document.getElementById('generateBtn').addEventListener('click', function() {
     }, 100);
 });
 
-// Modify the generateGrid function to handle spaces better
+// Optimized grid generator using CSP approach
 function generateGrid() {
-    let word = document.getElementById('wordInput').value.toUpperCase();
+    const word = document.getElementById('wordInput').value.toUpperCase();
     if (!word.trim()) {
         alert('Please enter a word');
         return;
     }
 
-    // Replace multiple spaces with single space
-    word = word.replace(/\s+/g, ' ');
+    if (word.length > 15) {
+        alert('Maximum word length is 15 characters');
+        return;
+    }
 
-    // Validate input
+    // Validate all characters
     for (const char of word) {
-        if (!letters.hasOwnProperty(char)) {
+        if (!letters[char]) {
             alert(`Character '${char}' is not supported`);
             return;
         }
     }
 
-    // Calculate initial grid size (include space for spaces between letters)
-    const initialSize = calculateInitialGridSize(word);
+    const startTime = Date.now();
+    const solution = findCompactSolution(word);
     
-    // Try to find solution with increasing grid sizes
-    for (let size = initialSize; size <= 15; size++) {
-        const solution = findCompactSolution(word, size);
-        if (solution) {
-            displayGrid(solution.grid, size, size);
-            return;
-        }
+    if (solution) {
+        console.log(`Solved in ${(Date.now() - startTime)/1000} seconds`);
+        displayGrid(solution.grid, solution.width, solution.height);
+    } else {
+        alert('Could not find a compact solution');
     }
-    
-    alert('Could not find a compact solution (tried up to 15×15 grid)');
 }
 
-// Modify calculateInitialGridSize function to account for spaces
-function calculateInitialGridSize(word) {
-    const totalCells = word.split('').reduce((sum, char) => {
-        // Add 1 unit of space for each space character
-        if (char === ' ') {
-            return sum + 1;
-        }
-        return sum + (letters[char]?.length || 0);
-    }, 0);
-    
-    return Math.max(
-        Math.ceil(Math.sqrt(totalCells * 0.6)),
-        Math.max(...word.split('').map(char => 
-            char === ' ' ? 1 : Math.max(...letters[char].map(pos => Math.max(pos[0], pos[1])))
-        )) + 1
-    );
-}
-
-// Add this new function to get all possible rotations of a letter
-function getAllRotations(letterCells) {
-    const rotations = new Set();
-    
-    // Try all possible rotations and flips
-    for (let flip = 0; flip < 2; flip++) {
-        let cells = flip ? flipHorizontal(letterCells) : [...letterCells];
-        
-        for (let rot = 0; rot < 4; rot++) {
-            const key = JSON.stringify(cells);
-            rotations.add(key);
-            cells = rotateLetter(cells, 1);
-        }
-    }
-    
-    return Array.from(rotations).map(key => JSON.parse(key));
-}
-
-function flipHorizontal(cells) {
-    const maxX = Math.max(...cells.map(([_, x]) => x));
-    return cells.map(([y, x]) => [y, maxX - x]);
-}
-
-// Modify findCompactSolution function
-function findCompactSolution(word, size) {
+// Main solver function using optimized CSP approach
+function findCompactSolution(word) {
     const lettersToPlace = word.split('').map((char, index) => ({
         char,
         cells: letters[char],
         index: index + 1,
-        rotations: getAllRotations(letters[char])
+        rotations: getOptimizedRotations(letters[char], char)
     }));
 
-    // Sort letters by size (larger letters first)
+    // Sort by most constrained first (most cells first)
     lettersToPlace.sort((a, b) => b.cells.length - a.cells.length);
 
-    const grid = Array(size).fill().map(() => Array(size).fill(0));
-    return tryPlacementWithAllRotations(lettersToPlace, grid, size) ? { grid } : null;
+    // Start with minimal grid size and increase as needed
+    let size = calculateInitialSize(word);
+    const maxSize = 50; // Maximum grid size to try
+    
+    while (size <= maxSize) {
+        const grid = Array(size).fill().map(() => Array(size).fill(0));
+        const placed = Array(lettersToPlace.length).fill(false);
+        
+        if (placeLettersOptimized(lettersToPlace, grid, placed, 0, size)) {
+            const trimmed = trimGrid(grid);
+            return {
+                grid: trimmed.grid,
+                width: trimmed.width,
+                height: trimmed.height
+            };
+        }
+        
+        size++; // Try larger grid if no solution found
+    }
+    
+    return null;
 }
 
-// Add new placement function with all rotations
-function tryPlacementWithAllRotations(letters, grid, size) {
-    if (letters.length === 0) return true;
-
-    const letter = letters[0];
-    const remaining = letters.slice(1);
-
-    // Try each rotation of the current letter
+// Optimized placement algorithm with backtracking
+function placeLettersOptimized(letters, grid, placed, count, size) {
+    if (count === letters.length) return true;
+    
+    // Select most constrained letter not yet placed
+    const letter = selectUnplacedLetter(letters, placed);
+    if (!letter) return false;
+    
+    // Try all rotations
     for (const rotation of letter.rotations) {
-        // Try each position in the grid
-        for (let y = 0; y < size; y++) {
-            for (let x = 0; x < size; x++) {
-                if (canPlaceLetter(rotation, grid, x, y, size)) {
-                    // Place the letter
-                    placeLetter(rotation, grid, x, y, letter.index);
-                    
-                    // Try to place remaining letters
-                    if (tryPlacementWithAllRotations(remaining, grid, size)) {
-                        return true;
-                    }
-                    
-                    // If unsuccessful, remove the letter
-                    removeLetter(rotation, grid, x, y);
+        // Get candidate positions sorted by centrality
+        const positions = getCandidatePositions(grid, size, count === 0);
+        
+        for (const [y, x] of positions) {
+            if (canPlaceLetterOptimized(rotation, grid, y, x, size, count)) {
+                placeLetterOptimized(rotation, grid, y, x, letter.index);
+                placed[letters.indexOf(letter)] = true;
+                
+                if (placeLettersOptimized(letters, grid, placed, count + 1, size)) {
+                    return true;
                 }
+                
+                // Backtrack
+                removeLetterOptimized(rotation, grid, y, x);
+                placed[letters.indexOf(letter)] = false;
             }
         }
     }
@@ -175,291 +152,236 @@ function tryPlacementWithAllRotations(letters, grid, size) {
     return false;
 }
 
-// Modify canPlaceLetter function to check adjacency
-function canPlaceLetter(letterCells, grid, x, y, size) {
-    // First check cells availability
-    for (const [dy, dx] of letterCells) {
+// Helper functions for optimized solver
+function selectUnplacedLetter(letters, placed) {
+    for (let i = 0; i < letters.length; i++) {
+        if (!placed[i]) return letters[i];
+    }
+    return null;
+}
+
+function getOptimizedRotations(cells, char) {
+    if (char === 'K') {
+        // Only need 0° and 180° for K
+        const maxRow = Math.max(...cells.map(pos => pos[0]));
+        const maxCol = Math.max(...cells.map(pos => pos[1]));
+        const rotated180 = cells.map(([y, x]) => [maxRow - y, maxCol - x]);
+        return [cells, rotated180];
+    }
+    return getAllRotations(cells);
+}
+
+function getAllRotations(cells) {
+    if (!cells.length) return [];
+    
+    const rotations = new Set();
+    const maxRow = Math.max(...cells.map(pos => pos[0]));
+    const maxCol = Math.max(...cells.map(pos => pos[1]));
+    
+    // Original
+    rotations.add(JSON.stringify(cells));
+    
+    // 90°
+    const rotated90 = cells.map(([y, x]) => [x, maxRow - y]);
+    rotations.add(JSON.stringify(rotated90));
+    
+    // 180°
+    const rotated180 = rotated90.map(([y, x]) => [x, maxRow - y]);
+    rotations.add(JSON.stringify(rotated180));
+    
+    // 270°
+    const rotated270 = rotated180.map(([y, x]) => [x, maxRow - y]);
+    rotations.add(JSON.stringify(rotated270));
+    
+    return Array.from(rotations).map(str => JSON.parse(str));
+}
+
+function calculateInitialSize(word) {
+    const totalCells = word.split('').reduce((sum, char) => sum + letters[char].length, 0);
+    return Math.max(
+        Math.ceil(Math.sqrt(totalCells * 1.3)), // More space for complex words
+        Math.max(...word.split('').map(char => 
+            Math.max(...letters[char].map(pos => Math.max(pos[0], pos[1])))
+        )) + 2
+    );
+}
+
+function getCandidatePositions(grid, size, isFirstLetter) {
+    const positions = [];
+    const center = Math.floor(size / 2);
+    
+    if (isFirstLetter) {
+        // For first letter, start near center
+        return [[center, center]];
+    }
+    
+    // Find all empty cells adjacent to placed letters
+    const adjacent = new Set();
+    
+    for (let y = 0; y < size; y++) {
+        for (let x = 0; x < size; x++) {
+            if (grid[y][x] !== 0) {
+                // Check surrounding positions
+                for (let dy = -1; dy <= 1; dy++) {
+                    for (let dx = -1; dx <= 1; dx++) {
+                        if (dy === 0 && dx === 0) continue;
+                        const ny = y + dy;
+                        const nx = x + dx;
+                        if (ny >= 0 && nx >= 0 && ny < size && nx < size && grid[ny][nx] === 0) {
+                            adjacent.add(JSON.stringify([ny, nx]));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // Convert to array and sort by centrality
+    return Array.from(adjacent)
+        .map(pos => JSON.parse(pos))
+        .sort((a, b) => {
+            const da = Math.abs(a[0] - center) + Math.abs(a[1] - center);
+            const db = Math.abs(b[0] - center) + Math.abs(b[1] - center);
+            return da - db;
+        });
+}
+
+function canPlaceLetterOptimized(cells, grid, y, x, size, placedCount) {
+    // Check bounds and empty cells
+    for (const [dy, dx] of cells) {
         const ny = y + dy;
         const nx = x + dx;
-        
-        if (ny < 0 || nx < 0 || ny >= size || nx >= size || grid[ny][nx] !== 0) {
+        if (ny >= size || nx >= size || grid[ny][nx] !== 0) {
             return false;
         }
     }
-
-    // Check if letter touches another letter (only if not first letter)
-    if (countUsedCells(grid) > 0) {
-        let touchesExisting = false;
-        for (const [dy, dx] of letterCells) {
+    
+    // Check adjacency if not first letter
+    if (placedCount > 0) {
+        for (const [dy, dx] of cells) {
             const ny = y + dy;
             const nx = x + dx;
             
             // Check adjacent cells
-            const adjacentPositions = [
-                [ny-1, nx], [ny+1, nx],
-                [ny, nx-1], [ny, nx+1]
+            const adjacent = [
+                [ny-1, nx], [ny+1, nx], [ny, nx-1], [ny, nx+1]
             ];
             
-            for (const [ay, ax] of adjacentPositions) {
-                if (ay >= 0 && ax >= 0 && ay < size && ax < size) {
-                    if (grid[ay][ax] !== 0) {
-                        touchesExisting = true;
-                        break;
-                    }
-                }
-            }
-            if (touchesExisting) break;
-        }
-        
-        if (!touchesExisting) return false;
-    }
-    
-    return true;
-}
-
-function countUsedCells(grid) {
-    return grid.reduce((sum, row) => 
-        sum + row.reduce((rowSum, cell) => rowSum + (cell !== 0 ? 1 : 0), 0), 0);
-}
-
-// Replace the existing generatePermutations function with this optimized version
-function generatePermutations(arr, maxPerms = 50) {
-    if (arr.length <= 1) return [arr];
-    if (arr.length > 8) { // For longer words, just try a few variations
-        return [arr, arr.slice().reverse()];
-    }
-    
-    const result = [];
-    let count = 0;
-    
-    for (let i = 0; i < arr.length && count < maxPerms; i++) {
-        const current = arr[i];
-        const remaining = [...arr.slice(0, i), ...arr.slice(i + 1)];
-        const perms = generatePermutations(remaining, maxPerms - count);
-        
-        for (const perm of perms) {
-            result.push([current, ...perm]);
-            count++;
-            if (count >= maxPerms) break;
-        }
-    }
-    
-    return result;
-}
-
-function rotateLetter(cells, rotation) {
-    switch(rotation) {
-        case 0: // no rotation
-            return cells;
-        case 1: // 90 degrees
-            const maxCol90 = Math.max(...cells.map(pos => pos[1]));
-            return cells.map(([y, x]) => [x, maxCol90 - y]);
-        case 2: // 180 degrees
-            const maxRow180 = Math.max(...cells.map(pos => pos[0]));
-            const maxCol180 = Math.max(...cells.map(pos => pos[1]));
-            return cells.map(([y, x]) => [maxRow180 - y, maxCol180 - x]);
-        case 3: // 270 degrees
-            const maxRow270 = Math.max(...cells.map(pos => pos[0]));
-            return cells.map(([y, x]) => [maxRow270 - x, y]);
-    }
-}
-
-function calculatePotentialSpaces(letterCells) {
-    if (letterCells.length === 0) return 0;
-    
-    const height = Math.max(...letterCells.map(pos => pos[0])) + 1;
-    const width = Math.max(...letterCells.map(pos => pos[1])) + 1;
-    
-    // Calculate how many empty cells are surrounded by filled cells
-    let spaceCount = 0;
-    const letterGrid = Array(height).fill().map(() => Array(width).fill(0));
-    
-    for (const [y, x] of letterCells) {
-        letterGrid[y][x] = 1;
-    }
-    
-    for (let y = 0; y < height; y++) {
-        for (let x = 0; x < width; x++) {
-            if (letterGrid[y][x] === 0) {
-                // Check if this empty cell is surrounded
-                if ((y > 0 && letterGrid[y-1][x] === 1) &&
-                    (y < height-1 && letterGrid[y+1][x] === 1) &&
-                    (x > 0 && letterGrid[y][x-1] === 1) &&
-                    (x < width-1 && letterGrid[y][x+1] === 1)) {
-                    spaceCount++;
-                }
-            }
-        }
-    }
-    
-    return spaceCount;
-}
-
-function placeLettersCompact(lettersToPlace, grid, size, index) {
-    if (index >= lettersToPlace.length) {
-        return true; // All letters placed
-    }
-    
-    const letter = lettersToPlace[index];
-    
-    // Try all possible positions for this letter
-    for (let y = 0; y < size; y++) {
-        for (let x = 0; x < size; x++) {
-            // Try normal placement
-            if (canPlaceLetterCompact(letter.cells, grid, x, y, size, 0)) {
-                placeLetter(letter.cells, grid, x, y, letter.index);
-                
-                if (placeLettersCompact(lettersToPlace, grid, size, index + 1)) {
+            for (const [ay, ax] of adjacent) {
+                if (ay >= 0 && ax >= 0 && ay < size && ax < size && grid[ay][ax] !== 0) {
                     return true;
                 }
-                
-                removeLetter(letter.cells, grid, x, y);
-            }
-            
-            // Try rotated placement (90 degrees)
-            const rotated = rotateLetter(letter.cells);
-            if (canPlaceLetterCompact(rotated, grid, x, y, size, 0)) {
-                placeLetter(rotated, grid, x, y, letter.index);
-                
-                if (placeLettersCompact(lettersToPlace, grid, size, index + 1)) {
-                    return true;
-                }
-                
-                removeLetter(rotated, grid, x, y);
             }
         }
-    }
-    
-    return false;
-}
-
-function canPlaceLetterCompact(letterCells, grid, x, y, size, emptyValue) {
-    for (const [dy, dx] of letterCells) {
-        const ny = y + dy;
-        const nx = x + dx;
-        
-        if (ny >= size || nx >= size || grid[ny][nx] !== emptyValue) {
-            return false;
-        }
+        return false;
     }
     return true;
 }
 
-function placeLetter(letterCells, grid, x, y, value) {
-    for (const [dy, dx] of letterCells) {
+function placeLetterOptimized(cells, grid, y, x, value) {
+    for (const [dy, dx] of cells) {
         grid[y + dy][x + dx] = value;
     }
 }
 
-function removeLetter(letterCells, grid, x, y) {
-    for (const [dy, dx] of letterCells) {
+function removeLetterOptimized(cells, grid, y, x) {
+    for (const [dy, dx] of cells) {
         grid[y + dy][x + dx] = 0;
     }
 }
 
 function trimGrid(grid) {
-    const height = grid.length;
-    const width = grid[0].length;
+    let minY = grid.length, maxY = 0, minX = grid[0].length, maxX = 0;
     
-    // Find bounds of non-empty cells
-    let minRow = height - 1;
-    let maxRow = 0;
-    let minCol = width - 1;
-    let maxCol = 0;
-    
-    // Find the boundaries of content
-    for (let y = 0; y < height; y++) {
-        for (let x = 0; x < width; x++) {
+    for (let y = 0; y < grid.length; y++) {
+        for (let x = 0; x < grid[0].length; x++) {
             if (grid[y][x] !== 0) {
-                minRow = Math.min(minRow, y);
-                maxRow = Math.max(maxRow, y);
-                minCol = Math.min(minCol, x);
-                maxCol = Math.max(maxCol, x);
+                minY = Math.min(minY, y);
+                maxY = Math.max(maxY, y);
+                minX = Math.min(minX, x);
+                maxX = Math.max(maxX, x);
             }
         }
     }
     
-    // Create new trimmed grid
-    const trimmedGrid = [];
-    for (let y = minRow; y <= maxRow; y++) {
-        const row = [];
-        for (let x = minCol; x <= maxCol; x++) {
-            row.push(grid[y][x]);
-        }
-        trimmedGrid.push(row);
+    const trimmed = [];
+    for (let y = minY; y <= maxY; y++) {
+        trimmed.push(grid[y].slice(minX, maxX + 1));
     }
     
-    return trimmedGrid;
+    return {
+        grid: trimmed,
+        width: maxX - minX + 1,
+        height: maxY - minY + 1
+    };
 }
 
+// Display functions remain the same
 function displayGrid(grid, width, height) {
-    // Clear all containers
     const container = document.getElementById('gridContainer');
     container.innerHTML = '';
+    container.style.display = 'block';
     
-    // Trim the grid to remove empty rows and columns
-    const trimmedGrid = trimGrid(grid);
-    const trimmedHeight = trimmedGrid.length;
-    const trimmedWidth = trimmedGrid[0].length;
-    
-    // Create a header container for positioning buttons
-    const headerContainer = document.createElement('div');
-    headerContainer.style.display = 'flex';
-    headerContainer.style.justifyContent = 'flex-end'; // Align to right
-    headerContainer.style.width = '100%';
-    headerContainer.style.marginBottom = '20px';
-    headerContainer.style.marginTop = '20px'; // Add some top margin to move button down
-    container.appendChild(headerContainer);
+    // Create main content container
+    const contentContainer = document.createElement('div');
+    contentContainer.id = 'pdfContent';
+    contentContainer.style.width = '100%';
+    contentContainer.style.maxWidth = '800px';
+    contentContainer.style.margin = '0 auto';
+    contentContainer.style.padding = '20px';
+    container.appendChild(contentContainer);
 
-    // Create download button and position it at the right corner
-    const downloadBtn = document.createElement('button');
-    downloadBtn.textContent = 'Download PDF';
-    downloadBtn.style.padding = '8px 16px';
-    downloadBtn.style.fontSize = '14px';
-    downloadBtn.style.backgroundColor = '#4CAF50';
-    downloadBtn.style.color = 'white';
-    downloadBtn.style.border = 'none';
-    downloadBtn.style.borderRadius = '4px';
-    downloadBtn.style.cursor = 'pointer';
-    headerContainer.appendChild(downloadBtn); // Add button to header container
-    
-    // Create main puzzle container
-    const puzzleContainer = document.createElement('div');
-    puzzleContainer.style.border = '1px solid #ddd';
-    puzzleContainer.style.padding = '20px';
-    puzzleContainer.style.marginBottom = '20px';
-    puzzleContainer.style.clear = 'both'; // Clear the float
-    
-    // Add grid size text
-    const sizeText = document.createElement('div');
-    sizeText.textContent = `Grid size: ${trimmedWidth}×${trimmedHeight}`;
-    sizeText.style.marginBottom = '10px';
-    sizeText.style.fontWeight = 'bold';
-    puzzleContainer.appendChild(sizeText);
+    // Add title
+    const title = document.createElement('h1');
+    title.textContent = 'Letter Grid Puzzle';
+    title.style.textAlign = 'center';
+    title.style.marginBottom = '20px';
+    contentContainer.appendChild(title);
 
-    // Create container for letters
-    const lettersContainer = document.createElement('div');
-    lettersContainer.style.display = 'flex';
-    lettersContainer.style.gap = '20px';
-    lettersContainer.style.marginBottom = '30px';
-    lettersContainer.style.flexWrap = 'wrap';
-    lettersContainer.style.justifyContent = 'center';
-    puzzleContainer.appendChild(lettersContainer);
-
-    // Get the word from input
+    // Add word display
     const word = document.getElementById('wordInput').value.toUpperCase();
+    const wordDisplay = document.createElement('h2');
+    wordDisplay.textContent = `Word: ${word}`;
+    wordDisplay.style.textAlign = 'center';
+    wordDisplay.style.marginBottom = '30px';
+    contentContainer.appendChild(wordDisplay);
 
-    // Display each letter separately using unit squares
+    // Create letters section
+    const lettersSection = document.createElement('div');
+    lettersSection.id = 'lettersSection';
+    lettersSection.style.display = 'flex';
+    lettersSection.style.flexWrap = 'wrap';
+    lettersSection.style.justifyContent = 'center';
+    lettersSection.style.gap = '20px';
+    lettersSection.style.marginBottom = '30px';
+    contentContainer.appendChild(lettersSection);
+
+    // Add individual letters
     word.split('').forEach((char, index) => {
         if (char === ' ') return;
 
         const letterDiv = document.createElement('div');
-        letterDiv.style.display = 'grid';
-        letterDiv.style.gridTemplateColumns = 'repeat(5, 20px)';
-        letterDiv.style.gridTemplateRows = 'repeat(5, 20px)';
-        letterDiv.style.gap = '1px';
-        letterDiv.style.margin = '0 10px';
-        letterDiv.style.backgroundColor = '#ddd';
+        letterDiv.style.display = 'flex';
+        letterDiv.style.flexDirection = 'column';
+        letterDiv.style.alignItems = 'center';
+        letterDiv.style.margin = '10px';
+
+        // Letter label
+        const letterLabel = document.createElement('div');
+        letterLabel.textContent = char;
+        letterLabel.style.marginBottom = '10px';
+        letterLabel.style.fontWeight = 'bold';
+        letterDiv.appendChild(letterLabel);
+
+        // Letter grid
+        const letterGrid = document.createElement('div');
+        letterGrid.style.display = 'grid';
+        letterGrid.style.gridTemplateColumns = 'repeat(5, 20px)';
+        letterGrid.style.gridTemplateRows = 'repeat(5, 20px)';
+        letterGrid.style.gap = '1px';
+        letterGrid.style.backgroundColor = '#f5f5f5';
+        letterGrid.style.padding = '5px';
+        letterGrid.style.borderRadius = '5px';
 
         for (let i = 0; i < 25; i++) {
             const square = document.createElement('div');
@@ -469,130 +391,168 @@ function displayGrid(grid, width, height) {
             square.style.width = '20px';
             square.style.height = '20px';
             square.style.backgroundColor = 'white';
-            square.style.border = '1px solid #ccc';
+            square.style.border = '1px solid #eee';
             
             if (letters[char].some(([r, c]) => r === row && c === col)) {
                 square.style.backgroundColor = colors[index % colors.length];
                 square.style.border = '1px solid #999';
             }
             
-            letterDiv.appendChild(square);
+            letterGrid.appendChild(square);
         }
-        
-        lettersContainer.appendChild(letterDiv);
+
+        letterDiv.appendChild(letterGrid);
+        lettersSection.appendChild(letterDiv);
     });
-    
-    // Add instruction text
-    const instructionText = document.createElement('div');
-    instructionText.textContent = 'Fit the above alphabets into the below grid';
-    instructionText.style.marginBottom = '20px';
-    instructionText.style.fontSize = '16px';
-    instructionText.style.fontWeight = 'bold';
-    puzzleContainer.appendChild(instructionText);
 
-    // Create empty grid container
-    const emptyGridContainer = document.createElement('div');
-    emptyGridContainer.style.display = 'flex';
-    emptyGridContainer.style.flexDirection = 'column';
-    emptyGridContainer.style.alignItems = 'center';
+    // Create empty grid section
+    const emptyGridSection = document.createElement('div');
+    emptyGridSection.id = 'emptyGridSection';
+    emptyGridSection.style.display = 'flex';
+    emptyGridSection.style.flexDirection = 'column';
+    emptyGridSection.style.alignItems = 'center';
+    contentContainer.appendChild(emptyGridSection);
 
-    // Create empty grid
-    const emptyGridElement = document.createElement('div');
-    emptyGridElement.className = 'grid';
-    emptyGridElement.style.gridTemplateColumns = `repeat(${trimmedWidth}, 20px)`;
-    emptyGridElement.style.gridTemplateRows = `repeat(${trimmedHeight}, 20px)`;
+    const gridTitle = document.createElement('div');
+    gridTitle.innerHTML = '<strong>Fit the letters into this grid:</strong>';
+    gridTitle.style.marginBottom = '15px';
+    emptyGridSection.appendChild(gridTitle);
 
-    // Fill empty grid with cells
-    for (let y = 0; y < trimmedHeight; y++) {
-        for (let x = 0; x < trimmedWidth; x++) {
-            const cell = document.createElement('div');
-            cell.className = 'grid-cell';
-            emptyGridElement.appendChild(cell);
-        }
+    const sizeDisplay = document.createElement('div');
+    sizeDisplay.textContent = `Grid size: ${width}×${height}`;
+    sizeDisplay.style.marginBottom = '10px';
+    emptyGridSection.appendChild(sizeDisplay);
+
+    const emptyGrid = document.createElement('div');
+    emptyGrid.style.display = 'grid';
+    emptyGrid.style.gridTemplateColumns = `repeat(${width}, 25px)`;
+    emptyGrid.style.gridTemplateRows = `repeat(${height}, 25px)`;
+    emptyGrid.style.gap = '2px';
+    emptyGrid.style.border = '2px solid #333';
+    emptyGrid.style.padding = '5px';
+    emptyGrid.style.marginBottom = '20px';
+
+    for (let i = 0; i < width * height; i++) {
+        const cell = document.createElement('div');
+        cell.style.width = '25px';
+        cell.style.height = '25px';
+        cell.style.backgroundColor = 'white';
+        cell.style.border = '1px solid #ddd';
+        emptyGrid.appendChild(cell);
     }
-    emptyGridContainer.appendChild(emptyGridElement);
-    puzzleContainer.appendChild(emptyGridContainer);
 
-    // Add puzzle container to main container
-    container.appendChild(puzzleContainer);
-    
-    // Update PDF download event listener
-    downloadBtn.addEventListener('click', () => {
-        // Configure pdf options
+    emptyGridSection.appendChild(emptyGrid);
+
+    // Add download button
+    const downloadBtn = document.createElement('button');
+    downloadBtn.textContent = 'Download PDF';
+    downloadBtn.style.padding = '10px 20px';
+    downloadBtn.style.margin = '20px auto';
+    downloadBtn.style.display = 'block';
+    downloadBtn.style.backgroundColor = '#4CAF50';
+    downloadBtn.style.color = 'white';
+    downloadBtn.style.border = 'none';
+    downloadBtn.style.borderRadius = '4px';
+    downloadBtn.style.cursor = 'pointer';
+    container.appendChild(downloadBtn);
+
+    downloadBtn.addEventListener('click', async () => {
+        // Add printing class to elements for better PDF rendering
+        contentContainer.classList.add('printing');
+        
         const opt = {
             margin: 10,
             filename: 'letter_puzzle.pdf',
-            image: { type: 'jpeg', quality: 0.98 },
-            html2canvas: { scale: 2 },
-            jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+            image: { type: 'jpeg', quality: 1 },
+            html2canvas: {
+                scale: 2,
+                scrollX: 0,
+                scrollY: 0,
+                windowWidth: contentContainer.scrollWidth,
+                windowHeight: contentContainer.scrollHeight,
+                ignoreElements: (element) => {
+                    // Explicitly ignore any buttons
+                    return element.tagName === 'BUTTON';
+                }
+            },
+            jsPDF: {
+                unit: 'mm',
+                format: 'a4',
+                orientation: 'portrait'
+            }
         };
-
-        // Create a clone of the puzzle container for PDF generation
-        const tempContainer = document.createElement('div');
-        tempContainer.style.padding = '20px';
-        tempContainer.appendChild(puzzleContainer.cloneNode(true));
-        document.body.appendChild(tempContainer);
-
-        // Generate and download PDF
-        html2pdf().set(opt).from(tempContainer).save().then(() => {
-            document.body.removeChild(tempContainer);
-        });
+        
+        try {
+            await html2pdf().set(opt).from(contentContainer).save();
+        } catch (error) {
+            console.error('Error generating PDF:', error);
+            alert('Error generating PDF. Please try again.');
+        } finally {
+            contentContainer.classList.remove('printing');
+        }
     });
-
-    // Create View Solution button outside the puzzle container
+    // Add view solution button
     const viewSolutionBtn = document.createElement('button');
     viewSolutionBtn.textContent = 'View Solution';
     viewSolutionBtn.style.padding = '10px 20px';
-    viewSolutionBtn.style.fontSize = '16px';
+    viewSolutionBtn.style.margin = '20px auto';
+    viewSolutionBtn.style.display = 'block';
     viewSolutionBtn.style.backgroundColor = '#4CAF50';
     viewSolutionBtn.style.color = 'white';
     viewSolutionBtn.style.border = 'none';
     viewSolutionBtn.style.borderRadius = '4px';
     viewSolutionBtn.style.cursor = 'pointer';
-    viewSolutionBtn.style.margin = '20px auto';
-    viewSolutionBtn.style.display = 'block';
     container.appendChild(viewSolutionBtn);
-    
+
     viewSolutionBtn.addEventListener('click', () => {
-        // Create solution container
         const solutionContainer = document.createElement('div');
         solutionContainer.style.display = 'flex';
         solutionContainer.style.flexDirection = 'column';
         solutionContainer.style.alignItems = 'center';
         solutionContainer.style.margin = '20px auto';
         
-        // Create solution title
-        const solutionTitle = document.createElement('div');
+        const solutionTitle = document.createElement('h3');
         solutionTitle.textContent = 'Solution';
-        solutionTitle.style.fontSize = '16px';
-        solutionTitle.style.fontWeight = 'bold';
         solutionTitle.style.marginBottom = '10px';
         solutionContainer.appendChild(solutionTitle);
 
-        // Create solution grid
         const solutionGrid = document.createElement('div');
-        solutionGrid.className = 'grid';
-        solutionGrid.style.gridTemplateColumns = `repeat(${trimmedWidth}, 20px)`;
-        solutionGrid.style.gridTemplateRows = `repeat(${trimmedHeight}, 20px)`;
-        
-        for (let y = 0; y < trimmedHeight; y++) {
-            for (let x = 0; x < trimmedWidth; x++) {
+        solutionGrid.style.display = 'grid';
+        solutionGrid.style.gridTemplateColumns = `repeat(${width}, 25px)`;
+        solutionGrid.style.gridTemplateRows = `repeat(${height}, 25px)`;
+        solutionGrid.style.gap = '2px';
+        solutionGrid.style.border = '2px solid #333';
+        solutionGrid.style.padding = '5px';
+        solutionGrid.style.marginBottom = '20px';
+
+        for (let y = 0; y < height; y++) {
+            for (let x = 0; x < width; x++) {
                 const cell = document.createElement('div');
-                cell.className = 'grid-cell';
+                cell.style.width = '25px';
+                cell.style.height = '25px';
                 
-                const value = trimmedGrid[y][x];
+                const value = grid[y][x];
                 if (value > 0) {
-                    cell.classList.add('filled');
                     cell.style.backgroundColor = colors[(value - 1) % colors.length];
+                    cell.style.border = '1px solid #999';
+                    
+                    const letterLabel = document.createElement('div');
+                    letterLabel.textContent = word[value - 1];
+                    letterLabel.style.textAlign = 'center';
+                    letterLabel.style.lineHeight = '25px';
+                    letterLabel.style.color = '#fff';
+                    letterLabel.style.textShadow = '1px 1px 1px rgba(0,0,0,0.5)';
+                    cell.appendChild(letterLabel);
+                } else {
+                    cell.style.backgroundColor = 'white';
+                    cell.style.border = '1px solid #ddd';
                 }
                 
                 solutionGrid.appendChild(cell);
             }
         }
-        
+
         solutionContainer.appendChild(solutionGrid);
-        
-        // Add solution container below the button
         container.appendChild(solutionContainer);
         viewSolutionBtn.style.display = 'none';
     });
