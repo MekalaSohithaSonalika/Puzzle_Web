@@ -30,6 +30,79 @@ const letters = {
     ' ': [] // Space character (empty)
 };
 
+function createGuaranteedSolution(lettersToPlace) {
+    // Calculate required grid size with more buffer space
+    const totalCells = lettersToPlace.reduce((sum, letter) => sum + letter.cells.length, 0);
+    const gridSize = Math.ceil(Math.sqrt(totalCells * 2)); // Increased buffer to 2x
+    
+    // Create grid with proper initialization
+    const grid = Array(gridSize).fill().map(() => Array(gridSize).fill(0));
+    
+    let currentRow = 0;
+    let currentCol = 0;
+    let maxHeightInRow = 0;
+
+    for (const letter of lettersToPlace) {
+        if (!letter.cells || letter.cells.length === 0) continue; // Skip empty letters
+        
+        const letterHeight = Math.max(...letter.cells.map(pos => pos[0])) + 1;
+        const letterWidth = Math.max(...letter.cells.map(pos => pos[1])) + 1;
+
+        // Check if we need to move to a new row
+        if (currentCol + letterWidth > gridSize) {
+            currentRow += maxHeightInRow + 1;
+            currentCol = 0;
+            maxHeightInRow = 0;
+            
+            // Check if we've run out of space vertically
+            if (currentRow + letterHeight > gridSize) {
+                // Expand the grid and retry
+                return createGuaranteedSolution(lettersToPlace);
+            }
+        }
+
+        // Place the letter with bounds checking
+        for (const [y, x] of letter.cells) {
+            const row = currentRow + y;
+            const col = currentCol + x;
+            
+            // Ensure the position is within bounds
+            if (row >= 0 && row < gridSize && col >= 0 && col < gridSize) {
+                grid[row][col] = letter.index;
+            }
+        }
+
+        // Update position tracking
+        currentCol += letterWidth + 1;
+        maxHeightInRow = Math.max(maxHeightInRow, letterHeight);
+    }
+
+    return trimGrid(grid);
+}
+
+function findCompactSolution(word) {
+    const lettersToPlace = word.split('').map((char, index) => ({
+        char,
+        cells: letters[char], // Now correctly accessing the letters object
+        index: index + 1,
+        rotations: getOptimizedRotations(letters[char], char),
+        size: letters[char].length
+    }));
+
+    // Rest of your solver implementation...
+    lettersToPlace.sort((a, b) => b.size - a.size);
+
+    const size = calculateOptimalInitialSize(word, lettersToPlace);
+    const grid = Array(size).fill().map(() => Array(size).fill(0));
+    const placed = new Array(lettersToPlace.length).fill(false);
+    
+    if (placeLettersOptimized(lettersToPlace, grid, placed, 0, size)) {
+        return trimGrid(grid);
+    }
+    
+    return createGuaranteedSolution(lettersToPlace);
+}
+
 const colors = [
     '#FF5733', '#33FF57', '#3357FF', '#F3FF33', '#FF33F3',
     '#33FFF3', '#8A2BE2', '#FF6347', '#7CFC00', '#FFD700'
@@ -61,8 +134,8 @@ function generateGrid() {
         return;
     }
 
-    if (word.length > 20) {
-        alert('Maximum word length is 20 characters');
+    if (word.length > 15) {
+        alert('Maximum word length is 15 characters');
         return;
     }
 
@@ -105,6 +178,24 @@ function getInstantRotations(cells, char) {
     const maxCol = Math.max(...cells.map(pos => pos[1]));
     const rotated180 = cells.map(([y, x]) => [maxRow - y, maxCol - x]);
     return [cells, rotated180];
+}
+
+
+function canPlaceLetter(cells, grid, y, x, size) {
+    for (const [dy, dx] of cells) {
+        const ny = y + dy;
+        const nx = x + dx;
+        if (ny >= size || nx >= size || ny < 0 || nx < 0 || grid[ny][nx] !== 0) {
+            return false;
+        }
+    }
+    return true;
+}
+
+function placeLetter(cells, grid, y, x, value) {
+    for (const [dy, dx] of cells) {
+        grid[y + dy][x + dx] = value;
+    }
 }
 
 function getLetterDimensions(cells) {
@@ -193,57 +284,167 @@ function calculateOptimalInitialSize(word, letters) {
         Math.max(...l.cells.map(pos => Math.max(pos[0], pos[1])))
     ));
     
-    // More aggressive packing for larger words
-    return Math.ceil(Math.sqrt(totalCells * (word.length > 15 ? 1.5 : 1.2))) + maxDim;
+    return Math.ceil(Math.sqrt(totalCells * 1.2)) + maxDim;
 }
+
+function calculateTightInitialSize(letters) {
+    const totalArea = letters.reduce((sum, l) => sum + l.size, 0);
+    const maxDim = Math.max(...letters.map(l => 
+        Math.max(...l.cells.map(pos => Math.max(pos[0], pos[1]))) + 1
+    ));
+    return Math.max(
+        Math.ceil(Math.sqrt(totalArea * 1.1)),
+        maxDim
+    );
+}
+
 
 // Main solver function using optimized CSP approach
 // Ultra-optimized solver that works instantly for most words
-function findCompactSolution(word) {
-    const lettersToPlace = word.split('').map((char, index) => ({
-        char,
-        cells: letters[char],
-        index: index + 1,
-        rotations: getInstantRotations(letters[char], char),
-        size: letters[char].length
-    }));
-
-    lettersToPlace.sort((a, b) => {
-        if (b.size !== a.size) return b.size - a.size;
-        return calculateComplexity(b.cells) - calculateComplexity(a.cells);
-    });
-
-    const size = calculateOptimalInitialSize(word, lettersToPlace);
-    const grid = Array(size).fill().map(() => Array(size).fill(0));
-    const placed = new Array(lettersToPlace.length).fill(false);
-    const positionCache = new Array(size * size);
-    
-    if (placeLettersInstantly(lettersToPlace, grid, placed, 0, size, positionCache)) {
-        return trimGrid(grid);
-    }
-    
-    return findSolutionWithBacktracking(lettersToPlace, size);
-}
 
 function placeLetterOptimized(cells, grid, y, x, value) {
     for (const [dy, dx] of cells) {
-        grid[y + dy][x + dx] = value;
+        const ny = y + dy;
+        const nx = x + dx;
+        if (ny >= 0 && ny < grid.length && nx >= 0 && nx < grid[0].length) {
+            grid[ny][nx] = value;
+        }
     }
+}
+
+function countPlacementOptions(letter, grid, size) {
+    let count = 0;
+    const positions = getOptimizedPositions(grid, size, false);
+    
+    for (const rotation of letter.rotations) {
+        for (const [y, x] of positions) {
+            if (canPlaceLetterOptimized(rotation, grid, y, x, size, 0)) {
+                count++;
+                // Early exit if we've found enough options
+                if (count > 100) return count;
+            }
+        }
+    }
+    
+    return count;
+}
+
+// 1. First define the missing selection function
+function selectNextLetterMRV(letters, placed, grid, size) {
+    let bestLetter = null;
+    let minOptions = Infinity;
+    
+    for (let i = 0; i < letters.length; i++) {
+        if (!placed[i]) {
+            const letter = letters[i];
+            const options = countPlacementOptions(letter, grid, size);
+            
+            if (options < minOptions) {
+                minOptions = options;
+                bestLetter = letter;
+                // Early exit if we find a letter with very few options
+                if (minOptions <= 1) break;
+            }
+        }
+    }
+    
+    return bestLetter;
+}
+
+function tryCompactGrid(grid, letters) {
+    // Make a deep copy of the grid
+    const tempGrid = grid.map(row => [...row]);
+    
+    // Try to shift all letters up as much as possible
+    let changed;
+    do {
+        changed = false;
+        for (let y = 1; y < tempGrid.length; y++) {
+            for (let x = 0; x < tempGrid[0].length; x++) {
+                if (tempGrid[y][x] !== 0 && tempGrid[y-1][x] === 0) {
+                    // Can move this cell up
+                    tempGrid[y-1][x] = tempGrid[y][x];
+                    tempGrid[y][x] = 0;
+                    changed = true;
+                }
+            }
+        }
+    } while (changed);
+    
+    // Check if this resulted in any empty rows at the bottom
+    const lastRow = tempGrid[tempGrid.length - 1];
+    if (lastRow.every(cell => cell === 0)) {
+        // Found more compact arrangement - update original grid
+        for (let y = 0; y < grid.length; y++) {
+            for (let x = 0; x < grid[0].length; x++) {
+                grid[y][x] = tempGrid[y][x];
+            }
+        }
+        return true;
+    }
+    
+    return false;
+}
+
+function getOptimizedPositions(grid, size, isFirstLetter) {
+    const positions = [];
+    const center = Math.floor(size / 2);
+    
+    if (isFirstLetter) {
+        return [[center, center]]; // Always start first letter in center
+    }
+    
+    // Find all empty cells adjacent to placed letters
+    const adjacent = new Set();
+    const emptyCells = [];
+    
+    for (let y = 0; y < size; y++) {
+        for (let x = 0; x < size; x++) {
+            if (grid[y][x] !== 0) {
+                // Check surrounding positions
+                for (let dy = -1; dy <= 1; dy++) {
+                    for (let dx = -1; dx <= 1; dx++) {
+                        if (dy === 0 && dx === 0) continue;
+                        const ny = y + dy;
+                        const nx = x + dx;
+                        if (ny >= 0 && nx >= 0 && ny < size && nx < size && grid[ny][nx] === 0) {
+                            adjacent.add(`${ny},${nx}`);
+                        }
+                    }
+                }
+            } else {
+                emptyCells.push([y, x]);
+            }
+        }
+    }
+    
+    // If no adjacent cells, fall back to all empty cells
+    const cellsToUse = adjacent.size > 0 ? 
+        Array.from(adjacent).map(pos => pos.split(',').map(Number)) : 
+        emptyCells;
+    
+    // Sort by centrality with some randomness
+    return cellsToUse.sort((a, b) => {
+        const da = Math.abs(a[0] - center) + Math.abs(a[1] - center);
+        const db = Math.abs(b[0] - center) + Math.abs(b[1] - center);
+        return da - db + (Math.random() - 0.5); // Add slight randomness
+    });
 }
 
 // Optimized placement algorithm with backtracking
 function placeLettersOptimized(letters, grid, placed, count, size) {
-    if (count === letters.length) return true;
+    if (count === letters.length) {
+        const compacted = tryCompactGrid(grid, letters);
+        if (compacted) return true;
+        return false;
+    }
     
-    // Select most constrained letter not yet placed
-    const letter = selectUnplacedLetter(letters, placed);
+    const letter = selectNextLetterMRV(letters, placed, grid, size);
     if (!letter) return false;
     
-    // Try all rotations
+    const positions = getOptimizedPositions(grid, size, count === 0);
+    
     for (const rotation of letter.rotations) {
-        // Get candidate positions sorted by centrality
-        const positions = getCandidatePositions(grid, size, count === 0);
-        
         for (const [y, x] of positions) {
             if (canPlaceLetterOptimized(rotation, grid, y, x, size, count)) {
                 placeLetterOptimized(rotation, grid, y, x, letter.index);
@@ -362,7 +563,7 @@ function canPlaceLetterOptimized(cells, grid, y, x, size, placedCount) {
     for (const [dy, dx] of cells) {
         const ny = y + dy;
         const nx = x + dx;
-        if (ny >= size || nx >= size || grid[ny][nx] !== 0) {
+        if (ny >= size || nx >= size || ny < 0 || nx < 0 || grid[ny][nx] !== 0) {
             return false;
         }
     }
@@ -502,33 +703,24 @@ function canPlaceInstant(cells, grid, y, x, size, placedCount) {
 function placeLettersInstantly(letters, grid, placed, count, size, positionCache) {
     if (count === letters.length) return true;
     
-    // For words >15 letters, use more aggressive placement
-    if (letters.length > 15 && count === 0) {
-        // Start with largest letter in corner for better packing
-        const cornerPositions = [
-            [0, 0], [0, size-1], 
-            [size-1, 0], [size-1, size-1]
-        ];
-        
-        const largestLetter = letters.reduce((max, letter) => 
-            !placed[letters.indexOf(letter)] && letter.size > max.size ? letter : max
-        , {size: 0});
-        
-        if (largestLetter.size > 0) {
-            for (const [y, x] of cornerPositions) {
-                for (const rotation of largestLetter.rotations) {
-                    if (canPlaceInstant(rotation, grid, y, x, size, count)) {
-                        placeLetterOptimized(rotation, grid, y, x, largestLetter.index);
-                        placed[letters.indexOf(largestLetter)] = true;
-                        
-                        if (placeLettersInstantly(letters, grid, placed, count + 1, size, positionCache)) {
-                            return true;
-                        }
-                        
-                        removeLetterOptimized(rotation, grid, y, x);
-                        placed[letters.indexOf(largestLetter)] = false;
-                    }
+    const letter = selectLetterForInstantPlacement(letters, placed);
+    if (!letter) return false;
+    
+    const positions = getInstantPositions(grid, size, count === 0, positionCache);
+    
+    for (const rotation of letter.rotations) {
+        for (const [y, x] of positions) {
+            if (canPlaceInstant(rotation, grid, y, x, size, count)) {
+                placeLetterOptimized(rotation, grid, y, x, letter.index);
+                placed[letters.indexOf(letter)] = true;
+                
+                if (placeLettersInstantly(letters, grid, placed, count + 1, size, positionCache)) {
+                    return true;
                 }
+                
+                removeLetterOptimized(rotation, grid, y, x);
+                placed[letters.indexOf(letter)] = false;
+                return false;
             }
         }
     }
