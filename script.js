@@ -521,17 +521,10 @@ function displayGrid(gridData) {
     const containerWidth = containerElement ? containerElement.clientWidth : (window.innerWidth * 0.8);
     const containerHeight = window.innerHeight * 0.5;
 
-    const cellBorderAndMargin = 4;
-    let cellSizeBasedOnWidth = (containerWidth / trimmedWidth) - cellBorderAndMargin;
-    let cellSizeBasedOnHeight = (containerHeight / trimmedHeight) - cellBorderAndMargin;
-
-    let cellSize = Math.min(cellSizeBasedOnWidth, cellSizeBasedOnHeight);
-    cellSize = Math.max(8, cellSize);
-    cellSize = Math.min(40, cellSize);
+    const cellSize = 20; // Fixed cell size for consistency
 
     gridElement.style.gridTemplateColumns = `repeat(${trimmedWidth}, ${cellSize}px)`;
     gridElement.style.gridTemplateRows = `repeat(${trimmedHeight}, ${cellSize}px)`;
-    gridElement.style.border = '1px solid #999';
     gridElement.style.margin = '10px auto';
 
     const colors = [
@@ -549,8 +542,6 @@ function displayGrid(gridData) {
             cell.className = 'grid-cell';
             cell.style.width = `${cellSize}px`;
             cell.style.height = `${cellSize}px`;
-            cell.style.border = '1px solid #ddd';
-            cell.style.boxSizing = 'border-box';
             cell.style.display = 'flex';
             cell.style.alignItems = 'center';
             cell.style.justifyContent = 'center';
