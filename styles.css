@@ -32,27 +32,37 @@ body {
 #gridContainer {
     display: inline-block;
     margin-top: 20px;
-    border: 1px solid #ddd;
 }
 
 .grid {
     display: grid;
-    gap: 1px;
     background-color: #ddd;
+    border: 1px solid #999;
 }
 
 .grid-cell {
-    border: 1px solid #ccc;
-    width: 20px;
-    height: 20px;
     background-color: white;
-    min-width: 20px;
-    min-height: 20px;
+    position: relative;
+    box-sizing: border-box;
 }
 
 .grid-cell.filled {
-    border: 1px solid #999;
     background-color: black;
+}
+
+.grid-cell::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    border: 1px solid #ddd;
+    box-sizing: border-box;
+}
+
+.grid-cell.filled::after {
+    border-color: #999;
 }
 
 button:hover {
