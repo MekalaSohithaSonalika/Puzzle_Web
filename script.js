@@ -77,6 +77,71 @@ function displayMessage(message, isError = false) {
     messageContainer.style.display = message ? 'block' : 'none';
 }
 
+function displayLetters(word) {
+    const container = document.getElementById('lettersContainer');
+    container.innerHTML = '';
+    
+    if (!word || word.trim() === '') return;
+    
+    const uniqueLetters = [...new Set(word.toUpperCase().split('').filter(char => char !== ' '))];
+    
+    uniqueLetters.forEach(char => {
+        if (letters[char]) {
+            const letterContainer = document.createElement('div');
+            letterContainer.className = 'letter-container';
+            
+            const title = document.createElement('div');
+            title.className = 'letter-title';
+            title.textContent = char;
+            letterContainer.appendChild(title);
+            
+            const letterGrid = document.createElement('div');
+            letterGrid.className = 'letter-grid';
+            
+            // Calculate dimensions of the letter
+            const letterShape = letters[char];
+            if (letterShape.length === 0) {
+                // Handle space character
+                letterGrid.style.gridTemplateColumns = 'repeat(1, 20px)';
+                letterGrid.style.gridTemplateRows = 'repeat(1, 20px)';
+                
+                const cell = document.createElement('div');
+                cell.className = 'letter-cell';
+                cell.style.width = '20px';
+                cell.style.height = '20px';
+                letterGrid.appendChild(cell);
+            } else {
+                const maxY = Math.max(...letterShape.map(pos => pos[0]));
+                const maxX = Math.max(...letterShape.map(pos => pos[1]));
+                
+                letterGrid.style.gridTemplateColumns = `repeat(${maxX + 1}, 20px)`;
+                letterGrid.style.gridTemplateRows = `repeat(${maxY + 1}, 20px)`;
+                
+                // Create all cells for the letter
+                for (let y = 0; y <= maxY; y++) {
+                    for (let x = 0; x <= maxX; x++) {
+                        const cell = document.createElement('div');
+                        cell.className = 'letter-cell';
+                        cell.style.width = '20px';
+                        cell.style.height = '20px';
+                        
+                        // Check if this position is filled in the letter definition
+                        const isFilled = letterShape.some(pos => pos[0] === y && pos[1] === x);
+                        if (isFilled) {
+                            cell.classList.add('filled');
+                        }
+                        
+                        letterGrid.appendChild(cell);
+                    }
+                }
+            }
+            
+            letterContainer.appendChild(letterGrid);
+            container.appendChild(letterContainer);
+        }
+    });
+}
+
 // Main function to generate the grid
 function generateGrid() {
     displayMessage('');
@@ -86,6 +151,7 @@ function generateGrid() {
         return;
     }
     word = word.replace(/\s+/g, ' ');
+    displayLetters(word);
 
     for (const char of word) {
         if (!letters.hasOwnProperty(char)) {
@@ -561,6 +627,7 @@ function displayGrid(gridData) {
     }
     container.appendChild(gridElement);
 }
+
 
 function trimGrid(grid) {
     if (!grid || grid.length === 0 || !grid[0] || grid[0].length === 0) return [[]];
