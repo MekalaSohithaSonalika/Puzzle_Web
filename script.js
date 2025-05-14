@@ -83,12 +83,22 @@ function displayLetters(word) {
     
     if (!word || word.trim() === '') return;
     
-    const uniqueLetters = [...new Set(word.toUpperCase().split('').filter(char => char !== ' '))];
+    // Show all letters in the word, not just unique ones
+    const lettersInWord = word.toUpperCase().split('').filter(char => char !== ' ');
     
-    uniqueLetters.forEach(char => {
+    // Adjust container width based on number of letters
+    container.style.maxWidth = '100%';
+    container.style.overflowX = 'auto';
+    container.style.whiteSpace = 'nowrap';
+    container.style.padding = '10px';
+    
+    lettersInWord.forEach(char => {
         if (letters[char]) {
             const letterContainer = document.createElement('div');
             letterContainer.className = 'letter-container';
+            letterContainer.style.display = 'inline-block';
+            letterContainer.style.margin = '0 10px';
+            letterContainer.style.verticalAlign = 'top';
             
             const title = document.createElement('div');
             title.className = 'letter-title';
@@ -167,7 +177,6 @@ function generateGrid() {
     const minPossibleStartSize = calculateInitialGridSize(word);
     let bestOverallSolutionGrid = null;
     let smallestTrimmedArea = Infinity;
-    // let smallestTrimmedDimForMsg = ""; // Not strictly needed if we recalculate for the final message
     let solutionFoundAtAll = false;
 
     const searchWindowBeyondMin = 10;
@@ -224,7 +233,6 @@ function generateGrid() {
                 if (isBetter) {
                     smallestTrimmedArea = currentTrimmedArea;
                     bestOverallSolutionGrid = solution.grid;
-                    // smallestTrimmedDimForMsg = `${currentTrimmedWidth} × ${currentTrimmedHeight}`;
                     console.log(`    New best overall solution found. Trimmed Area: ${smallestTrimmedArea}, Dimensions: ${currentTrimmedWidth} × ${currentTrimmedHeight}`);
                 }
             } else {
