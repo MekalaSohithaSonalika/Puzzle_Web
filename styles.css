@@ -82,3 +82,58 @@ button:hover {
         top: 0;
     }
 }
+
+/* Add these styles to your existing styles.css */
+#lettersContainer {
+    margin: 20px auto;
+    max-width: 90%;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 20px;
+    padding: 10px;
+}
+
+.letter-container {
+    display: inline-block;
+    margin: 5px;
+    text-align: center;
+}
+
+.letter-title {
+    font-size: 14px;
+    margin-bottom: 5px;
+    font-weight: bold;
+}
+
+.letter-grid {
+    display: grid;
+    background-color: #ddd;
+    border: 1px solid #999;
+    margin: 0 auto;
+}
+
+.letter-cell {
+    background-color: white;
+    position: relative;
+    box-sizing: border-box;
+}
+
+.letter-cell.filled {
+    background-color: black;
+}
+
+.letter-cell::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    border: 1px solid #ddd;
+    box-sizing: border-box;
+}
+
+.letter-cell.filled::after {
+    border-color: #999;
+}
