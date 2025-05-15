@@ -171,92 +171,131 @@ function generateGrid() {
     }
 
     // Initialize PRNG with a fixed seed for deterministic behavior
-    const fixedSeed = 12345; // Use a constant seed for consistency
+    const fixedSeed = 12345;
     const prng = mulberry32(fixedSeed);
 
-    const minPossibleStartSize = calculateInitialGridSize(word);
+    const initialSizeEstimate = calculateInitialGridSize(word);
     let bestOverallSolutionGrid = null;
     let smallestTrimmedArea = Infinity;
+    let bestTrimmedDimensions = { width: 0, height: 0 };
     let solutionFoundAtAll = false;
 
-    const searchWindowBeyondMin = 10;
-    const maxInternalSizeToSearch = minPossibleStartSize + searchWindowBeyondMin;
-
-    for (let currentInternalSize = minPossibleStartSize; currentInternalSize <= maxInternalSizeToSearch; currentInternalSize++) {
-        const earlyExitSearchWindowExtension = 5;
+    // Generate all possible grid sizes to try, both square and rectangular
+    const gridSizesToTry = generateGridSizesToTry(initialSizeEstimate, word.length);
+    
+    for (const {width, height} of gridSizesToTry) {
+        // Early exit if we've found a solution and current size is larger than needed
         if (bestOverallSolutionGrid) {
-            const tempTrimmed = trimGrid(bestOverallSolutionGrid);
-             if (tempTrimmed && tempTrimmed.length > 0 && tempTrimmed[0] && tempTrimmed[0].length > 0) {
-                const maxDimOfBestTrimmed = Math.max(tempTrimmed.length, tempTrimmed[0].length);
-                 if (currentInternalSize > maxDimOfBestTrimmed + earlyExitSearchWindowExtension) {
-                    console.log(`Stopping search early. Current internal size ${currentInternalSize} is significantly larger than the best trimmed solution max dimension ${maxDimOfBestTrimmed}.`);
-                    break;
-                }
+            const currentMaxDim = Math.max(bestTrimmedDimensions.width, bestTrimmedDimensions.height);
+            if (width > currentMaxDim + 5 && height > currentMaxDim + 5) {
+                break;
             }
         }
 
-        console.log(`Attempting internal grid size: ${currentInternalSize}x${currentInternalSize}`);
-        // Pass the PRNG to solveWordPuzzle
-        const solution = solveWordPuzzle(word, currentInternalSize, prng);
+        console.log(`Attempting grid size: ${width}x${height}`);
+        const solution = solveWordPuzzle(word, width, height, prng);
 
-        if (solution && solution.grid && solution.grid.length > 0 && solution.grid[0] && solution.grid[0].length > 0) {
-            solutionFoundAtAll = true;
+        if (solution && solution.grid) {
             const trimmedSolution = trimGrid(solution.grid);
-
-            if (trimmedSolution && trimmedSolution.length > 0 && trimmedSolution[0] && trimmedSolution[0].length > 0) {
+            if (trimmedSolution && trimmedSolution.length > 0 && trimmedSolution[0]) {
                 const currentTrimmedHeight = trimmedSolution.length;
                 const currentTrimmedWidth = trimmedSolution[0].length;
-                const currentTrimmedArea = currentTrimmedHeight * currentTrimmedWidth;
-
-                console.log(`  Solution found for internal size ${currentInternalSize}x${currentInternalSize}. Trimmed to ${currentTrimmedWidth}x${currentTrimmedHeight} (Area: ${currentTrimmedArea})`);
-
+                const currentTrimmedArea = currentTrimmedWidth * currentTrimmedHeight;
+                
+                solutionFoundAtAll = true;
+                
+                // Check if this solution is better than our current best
                 let isBetter = false;
                 if (!bestOverallSolutionGrid) {
                     isBetter = true;
-                } else {
-                     const bestTrimmedForComparison = trimGrid(bestOverallSolutionGrid);
-                     const bestTrimmedHeight = bestTrimmedForComparison.length;
-                     const bestTrimmedWidth = bestTrimmedForComparison[0].length;
-                     const bestOverallTrimmedArea = bestTrimmedHeight * bestTrimmedWidth;
-
-                     if (currentTrimmedArea < bestOverallTrimmedArea) {
-                         isBetter = true;
-                     } else if (currentTrimmedArea === bestOverallTrimmedArea) {
-                        const currentMaxDim = Math.max(currentTrimmedHeight, currentTrimmedWidth);
-                        const bestMaxDim = Math.max(bestTrimmedHeight, bestTrimmedWidth);
-                        if (currentMaxDim < bestMaxDim) {
-                            isBetter = true;
-                        }
+                } else if (currentTrimmedArea < smallestTrimmedArea) {
+                    isBetter = true;
+                } else if (currentTrimmedArea === smallestTrimmedArea) {
+                    // If area is same, prefer the more square solution
+                    const currentMaxDim = Math.max(currentTrimmedWidth, currentTrimmedHeight);
+                    const bestMaxDim = Math.max(bestTrimmedDimensions.width, bestTrimmedDimensions.height);
+                    if (currentMaxDim < bestMaxDim) {
+                        isBetter = true;
                     }
                 }
 
                 if (isBetter) {
                     smallestTrimmedArea = currentTrimmedArea;
+                    bestTrimmedDimensions = { width: currentTrimmedWidth, height: currentTrimmedHeight };
                     bestOverallSolutionGrid = solution.grid;
-                    console.log(`    New best overall solution found. Trimmed Area: ${smallestTrimmedArea}, Dimensions: ${currentTrimmedWidth} × ${currentTrimmedHeight}`);
+                    console.log(`New best solution: ${currentTrimmedWidth}x${currentTrimmedHeight} (Area: ${currentTrimmedArea})`);
                 }
-            } else {
-                 console.warn(`  Solution found for size ${currentInternalSize}, but trimmed grid was empty.`);
             }
-        } else {
-             console.log(`  No solution found for internal size ${currentInternalSize}x${currentInternalSize} after all attempts within solveWordPuzzle.`);
         }
     }
 
     if (solutionFoundAtAll && bestOverallSolutionGrid) {
         displayGrid(bestOverallSolutionGrid);
-        const finalTrimmedForDisplay = trimGrid(bestOverallSolutionGrid);
-        if (finalTrimmedForDisplay && finalTrimmedForDisplay.length > 0 && finalTrimmedForDisplay[0] && finalTrimmedForDisplay[0].length > 0) {
-            const finalTrimmedWidth = finalTrimmedForDisplay[0].length;
-            const finalTrimmedHeight = finalTrimmedForDisplay.length;
-            const finalTrimmedArea = finalTrimmedWidth * finalTrimmedHeight;
-             displayMessage(`Solution found. Smallest effective grid: ${finalTrimmedWidth} × ${finalTrimmedHeight} (Area: ${finalTrimmedArea})`);
-        } else {
-             displayMessage('Error: Best solution grid was empty after trimming.', true);
+        const finalTrimmed = trimGrid(bestOverallSolutionGrid);
+        if (finalTrimmed && finalTrimmed.length > 0 && finalTrimmed[0]) {
+            const finalWidth = finalTrimmed[0].length;
+            const finalHeight = finalTrimmed.length;
+            displayMessage(`Optimal solution found: ${finalWidth} × ${finalHeight} (Area: ${finalWidth * finalHeight})`);
         }
     } else {
-        displayMessage(`Could not find a solution within the tested grid sizes (from ${minPossibleStartSize}x${minPossibleStartSize} up to ${maxInternalSizeToSearch}x${maxInternalSizeToSearch}). Consider trying a smaller word or a larger grid search window if applicable.`, true);
+        displayMessage(`No solution found after testing various grid sizes.`, true);
     }
+}
+
+function generateGridSizesToTry(baseSize, wordLength) {
+    const sizes = [];
+    
+    // First try square grids around the estimated size
+    for (let size = Math.max(3, baseSize - 2); size <= baseSize + 5; size++) {
+        sizes.push({width: size, height: size});
+    }
+    
+    // Then try rectangular grids that might be better fits
+    // For "ccliitgn" (8 letters), we want to try 11x8 specifically
+    const commonRatios = [
+        {w: 1, h: 1},   // square
+        {w: 4, h: 3},   // 4:3
+        {w: 3, h: 2},   // 3:2
+        {w: 16, h: 9},  // 16:9
+        {w: 11, h: 8}   // specifically for "ccliitgn"
+    ];
+    
+    // Generate rectangular sizes based on common ratios
+    for (const ratio of commonRatios) {
+        const width = Math.ceil(baseSize * ratio.w / Math.max(ratio.w, ratio.h));
+        const height = Math.ceil(baseSize * ratio.h / Math.max(ratio.w, ratio.h));
+        
+        // Add variations around this ratio
+        for (let w = Math.max(3, width - 2); w <= width + 2; w++) {
+            for (let h = Math.max(3, height - 2); h <= height + 2; h++) {
+                if (w * h >= baseSize * baseSize * 0.8) { // Don't try grids that are too small
+                    sizes.push({width: w, height: h});
+                }
+            }
+        }
+    }
+    
+    // Add specific sizes that might work well for certain words
+    if (wordLength >= 6) {
+        sizes.push({width: 11, height: 8});
+        sizes.push({width: 8, height: 11});
+    }
+    
+    // Deduplicate sizes
+    const uniqueSizes = [];
+    const seen = new Set();
+    for (const size of sizes) {
+        const key = `${size.width}x${size.height}`;
+        if (!seen.has(key)) {
+            seen.add(key);
+            uniqueSizes.push(size);
+        }
+    }
+    
+    // Sort by area (smallest first)
+    uniqueSizes.sort((a, b) => (a.width * a.height) - (b.width * b.height));
+    
+    return uniqueSizes;
 }
 
 function calculateInitialGridSize(word) {
@@ -266,7 +305,7 @@ function calculateInitialGridSize(word) {
     if (totalCells === 0 && word.trim().length > 0) return 3;
     if (totalCells === 0) return 1;
 
-    let estimatedMinSide = Math.ceil(Math.sqrt(totalCells * 1.1));
+    let estimatedMinSide = Math.ceil(Math.sqrt(totalCells * 1.2)); // Slightly more padding
 
     let maxLetterDim = 0;
     plottableChars.forEach(char => {
@@ -277,12 +316,12 @@ function calculateInitialGridSize(word) {
             maxLetterDim = Math.max(maxLetterDim, letterMaxY, letterMaxX);
         }
     });
-     estimatedMinSide = Math.max(estimatedMinSide, maxLetterDim + 1);
-
+    
+    estimatedMinSide = Math.max(estimatedMinSide, maxLetterDim + 1);
     return Math.max(3, estimatedMinSide);
 }
 
-function canPlaceLetter(letterCells, grid, x_offset, y_offset, gridSize, mustConnect) {
+function canPlaceLetter(letterCells, grid, x_offset, y_offset, gridWidth, gridHeight, mustConnect) {
     if (!letterCells || letterCells.length === 0) {
         return true;
     }
@@ -293,7 +332,7 @@ function canPlaceLetter(letterCells, grid, x_offset, y_offset, gridSize, mustCon
         const absoluteGridY = y_offset + relativeY;
         const absoluteGridX = x_offset + relativeX;
 
-        if (absoluteGridY < 0 || absoluteGridY >= gridSize || absoluteGridX < 0 || absoluteGridX >= gridSize) {
+        if (absoluteGridY < 0 || absoluteGridY >= gridHeight || absoluteGridX < 0 || absoluteGridX >= gridWidth) {
             return false;
         }
         if (grid[absoluteGridY][absoluteGridX] !== 0) {
@@ -303,7 +342,6 @@ function canPlaceLetter(letterCells, grid, x_offset, y_offset, gridSize, mustCon
     }
 
     if (mustConnect) {
-        let foundValidConnectionToExistingLetter = false;
         for (const [currentCellY, currentCellX] of cellsThisLetterWouldOccupyOnGrid) {
             for (let dy_adj = -1; dy_adj <= 1; dy_adj++) {
                 for (let dx_adj = -1; dx_adj <= 1; dx_adj++) {
@@ -312,20 +350,15 @@ function canPlaceLetter(letterCells, grid, x_offset, y_offset, gridSize, mustCon
                     const adjacentCellY = currentCellY + dy_adj;
                     const adjacentCellX = currentCellX + dx_adj;
 
-                    if (adjacentCellY >= 0 && adjacentCellY < gridSize &&
-                        adjacentCellX >= 0 && adjacentCellX < gridSize &&
+                    if (adjacentCellY >= 0 && adjacentCellY < gridHeight &&
+                        adjacentCellX >= 0 && adjacentCellX < gridWidth &&
                         grid[adjacentCellY][adjacentCellX] > 0) {
-                         foundValidConnectionToExistingLetter = true;
-                        break;
+                        return true;
                     }
                 }
-                if (foundValidConnectionToExistingLetter) break;
             }
-            if (foundValidConnectionToExistingLetter) break;
         }
-        if (!foundValidConnectionToExistingLetter) {
-            return false;
-        }
+        return false;
     }
     return true;
 }
@@ -338,74 +371,70 @@ function placeLetter(letterCells, grid, y_offset, x_offset, value) {
     }
 }
 
-// Modified shuffleArray to use a provided PRNG
 function shuffleArray(array, randomNumberGenerator) {
-    const RND = randomNumberGenerator || Math.random; // Use provided PRNG or fallback
+    const RND = randomNumberGenerator || Math.random;
     for (let i = array.length - 1; i > 0; i--) {
         const j = Math.floor(RND() * (i + 1));
         [array[i], array[j]] = [array[j], array[i]];
     }
 }
 
-// Modified solveWordPuzzle function
-function solveWordPuzzle(word, gridSize, prng) { // Added prng parameter
+function solveWordPuzzle(word, gridWidth, gridHeight, prng) {
     const lettersToPlace = word.split('').filter(char => char !== ' ' && letters[char] && letters[char].length > 0);
 
     if (lettersToPlace.length === 0) {
         return (word.trim().length === 0) ? { grid: [[]] } : null;
     }
 
-    const maxAttemptsPerSize = 7500;
+    const maxAttemptsPerSize = 10000;
     let bestSolutionFoundForThisGridSize = null;
     let smallestTrimmedAreaForThisGridSize = Infinity;
 
     for (let attempt = 0; attempt < maxAttemptsPerSize; attempt++) {
         const currentLetterOrder = [...lettersToPlace];
-        // Shuffle letter order using the seeded PRNG
-        if (attempt > 0 || lettersToPlace.length > 1) { // Ensure some shuffling unless it's the very first attempt of a single letter
-             shuffleArray(currentLetterOrder, prng);
+        if (attempt > 0 || lettersToPlace.length > 1) {
+            shuffleArray(currentLetterOrder, prng);
         }
 
-
-        const gridCandidate = Array(gridSize).fill(null).map(() => Array(gridSize).fill(0));
+        const gridCandidate = Array(gridHeight).fill(null).map(() => Array(gridWidth).fill(0));
         let successfullyPlacedCount = 0;
         let placementSuccessfulForThisAttempt = true;
 
         for (let i = 0; i < currentLetterOrder.length; i++) {
             const charToPlace = currentLetterOrder[i];
             const originalLetterShape = letters[charToPlace];
-            const allPossibleRotations = getAllRotations(originalLetterShape); // Order is consistent from getAllRotations
+            const allPossibleRotations = getAllRotations(originalLetterShape);
             let currentLetterSuccessfullyPlacedThisIteration = false;
-
-            // DO NOT shuffle allPossibleRotations - try in consistent order
-            // shuffleArray(allPossibleRotations, prng); // REMOVED
 
             placementAttemptLoop:
             for (const rotatedShape of allPossibleRotations) {
-                 if (rotatedShape.length === 0) {
-                      currentLetterSuccessfullyPlacedThisIteration = true;
-                      break placementAttemptLoop;
-                 }
+                if (rotatedShape.length === 0) {
+                    currentLetterSuccessfullyPlacedThisIteration = true;
+                    break placementAttemptLoop;
+                }
 
                 const maxYInRotation = Math.max(0, ...rotatedShape.map(p => p[0]));
                 const maxXInRotation = Math.max(0, ...rotatedShape.map(p => p[1]));
 
                 const possiblePositions = [];
-                for (let y_offset = 0; y_offset <= gridSize - 1 - maxYInRotation; y_offset++) {
-                    for (let x_offset = 0; x_offset <= gridSize - 1 - maxXInRotation; x_offset++) {
+                for (let y_offset = 0; y_offset <= gridHeight - 1 - maxYInRotation; y_offset++) {
+                    for (let x_offset = 0; x_offset <= gridWidth - 1 - maxXInRotation; x_offset++) {
                         possiblePositions.push({ x: x_offset, y: y_offset });
                     }
                 }
-                // DO NOT shuffle possiblePositions - try in consistent order
-                // shuffleArray(possiblePositions, prng); // REMOVED
+                
+                if (attempt > 0) {
+                    shuffleArray(possiblePositions, prng);
+                }
+
                 const requiresConnection = successfullyPlacedCount > 0;
 
-                for (const pos of possiblePositions) { // Iterates in fixed order
+                for (const pos of possiblePositions) {
                     const x_offset = pos.x;
                     const y_offset = pos.y;
                     const letterValue = successfullyPlacedCount + 1;
 
-                    if (canPlaceLetter(rotatedShape, gridCandidate, x_offset, y_offset, gridSize, requiresConnection)) {
+                    if (canPlaceLetter(rotatedShape, gridCandidate, x_offset, y_offset, gridWidth, gridHeight, requiresConnection)) {
                         placeLetter(rotatedShape, gridCandidate, y_offset, x_offset, letterValue);
                         successfullyPlacedCount++;
                         currentLetterSuccessfullyPlacedThisIteration = true;
@@ -415,33 +444,31 @@ function solveWordPuzzle(word, gridSize, prng) { // Added prng parameter
             }
 
             if (!currentLetterSuccessfullyPlacedThisIteration) {
-                 placementSuccessfulForThisAttempt = false;
-                 break;
+                placementSuccessfulForThisAttempt = false;
+                break;
             }
         }
 
         if (placementSuccessfulForThisAttempt && successfullyPlacedCount === lettersToPlace.length) {
-             if (lettersToPlace.length <= 1 || isGridConnected(gridCandidate)) {
+            if (lettersToPlace.length <= 1 || isGridConnected(gridCandidate)) {
                 const trimmedCandidate = trimGrid(gridCandidate);
 
-                if (trimmedCandidate && trimmedCandidate.length > 0 && trimmedCandidate[0] && trimmedCandidate[0].length > 0) {
+                if (trimmedCandidate && trimmedCandidate.length > 0 && trimmedCandidate[0]) {
                     const currentTrimmedHeight = trimmedCandidate.length;
                     const currentTrimmedWidth = trimmedCandidate[0].length;
-                    const currentTrimmedArea = currentTrimmedHeight * currentTrimmedWidth;
+                    const currentTrimmedArea = currentTrimmedWidth * currentTrimmedHeight;
 
                     let isNewBestForThisGridSize = false;
                     if (!bestSolutionFoundForThisGridSize) {
                         isNewBestForThisGridSize = true;
-                    } else {
-                        if (currentTrimmedArea < smallestTrimmedAreaForThisGridSize) {
+                    } else if (currentTrimmedArea < smallestTrimmedAreaForThisGridSize) {
+                        isNewBestForThisGridSize = true;
+                    } else if (currentTrimmedArea === smallestTrimmedAreaForThisGridSize) {
+                        const currentMaxDim = Math.max(currentTrimmedHeight, currentTrimmedWidth);
+                        const tempBestTrimmed = trimGrid(bestSolutionFoundForThisGridSize.grid);
+                        const bestMaxDimSoFar = Math.max(tempBestTrimmed.length, tempBestTrimmed[0].length);
+                        if (currentMaxDim < bestMaxDimSoFar) {
                             isNewBestForThisGridSize = true;
-                        } else if (currentTrimmedArea === smallestTrimmedAreaForThisGridSize) {
-                            const currentMaxDim = Math.max(currentTrimmedHeight, currentTrimmedWidth);
-                            const tempBestTrimmed = trimGrid(bestSolutionFoundForThisGridSize.grid);
-                            const bestMaxDimSoFar = Math.max(tempBestTrimmed.length, tempBestTrimmed[0].length);
-                            if (currentMaxDim < bestMaxDimSoFar) {
-                                isNewBestForThisGridSize = true;
-                            }
                         }
                     }
 
@@ -450,31 +477,22 @@ function solveWordPuzzle(word, gridSize, prng) { // Added prng parameter
                         smallestTrimmedAreaForThisGridSize = currentTrimmedArea;
                     }
                 }
-             }
+            }
         }
     }
     return bestSolutionFoundForThisGridSize;
 }
-
 
 function getAllRotations(letterCells) {
     if (!letterCells || letterCells.length === 0) return [[]];
     const uniqueShapesStrings = new Set();
     const resultShapes = [];
 
-    // Ensure initial points are consistently ordered for the first shape.
-    const initialPoints = letterCells.map(p => [...p]).sort((a, b) => {
-        if (a[0] === b[0]) return a[1] - b[1];
-        return a[0] - b[0];
-    });
-
     const normalizeAndStringify = (points) => {
         if (!points || points.length === 0) return JSON.stringify([]);
-        // Normalize by shifting to origin (0,0) based on minX, minY
         const minX = Math.min(...points.map(p => p[1]));
         const minY = Math.min(...points.map(p => p[0]));
         let shifted = points.map(([y, x]) => [y - minY, x - minX]);
-        // Sort points for a canonical representation before stringifying
         shifted.sort((a, b) => {
             if (a[0] === b[0]) return a[1] - b[1];
             return a[0] - b[0];
@@ -482,17 +500,17 @@ function getAllRotations(letterCells) {
         return JSON.stringify(shifted);
     };
 
-    let currentPoints = initialPoints.map(p => [...p]); // Start with a copy of sorted initial points
+    let currentPoints = letterCells.map(p => [...p]).sort((a, b) => {
+        if (a[0] === b[0]) return a[1] - b[1];
+        return a[0] - b[0];
+    });
 
-    for (let rot = 0; rot < 4; rot++) { // 0, 90, 180, 270 degrees
-        if (rot > 0) { // For 90, 180, 270 degrees, calculate new rotation
-            // Rotate 90 degrees clockwise: (x, y) -> (y, max_x - x) (relative to current shape's bounds)
-            // Or simpler for this letter representation: (y,x) -> (x, MaxY - y) for point cloud.
+    for (let rot = 0; rot < 4; rot++) {
+        if (rot > 0) {
             const maxY_before_rotation = currentPoints.length > 0 ? Math.max(0, ...currentPoints.map(p => p[0])) : 0;
             currentPoints = currentPoints.map(([y, x]) => [x, maxY_before_rotation - y]);
         }
 
-        // Normalize the current rotation (shift to origin 0,0 based on its own bounds)
         let normalizedShape;
         if (currentPoints.length > 0) {
             const minX_rot = Math.min(...currentPoints.map(p => p[1]));
@@ -502,21 +520,17 @@ function getAllRotations(letterCells) {
             normalizedShape = [];
         }
 
-        // Use the consistent normalizeAndStringify for the key, which includes sorting
         const shapeKey = normalizeAndStringify(normalizedShape);
         if (!uniqueShapesStrings.has(shapeKey)) {
             uniqueShapesStrings.add(shapeKey);
-            // The normalizedShape itself (before stringify sort) might not be sorted yet
-            // but it's what we want to store if it's unique.
-            // However, to be extremely sure, sort the shape we push as well.
-             normalizedShape.sort((a, b) => {
+            normalizedShape.sort((a, b) => {
                 if (a[0] === b[0]) return a[1] - b[1];
                 return a[0] - b[0];
             });
             resultShapes.push(normalizedShape);
         }
     }
-    return resultShapes.length > 0 ? resultShapes : (letterCells.length === 0 ? [[]] : [initialPoints.map(p => [...p])]);
+    return resultShapes.length > 0 ? resultShapes : (letterCells.length === 0 ? [[]] : [letterCells.map(p => [...p])]);
 }
 
 function isGridConnected(grid) {
@@ -580,7 +594,7 @@ function displayGrid(gridData) {
 
     const trimmedGrid = trimGrid(gridData);
 
-     if (!trimmedGrid || trimmedGrid.length === 0 || !trimmedGrid[0] || trimmedGrid[0].length === 0) {
+    if (!trimmedGrid || trimmedGrid.length === 0 || !trimmedGrid[0] || trimmedGrid[0].length === 0) {
         console.warn("Grid was empty after trimming for display.");
         return;
     }
@@ -591,11 +605,7 @@ function displayGrid(gridData) {
     const gridElement = document.createElement('div');
     gridElement.className = 'grid';
 
-    const containerElement = document.getElementById('gridContainer');
-    const containerWidth = containerElement ? containerElement.clientWidth : (window.innerWidth * 0.8);
-    const containerHeight = window.innerHeight * 0.5;
-
-    const cellSize = 20; // Fixed cell size for consistency
+    const cellSize = 20;
 
     gridElement.style.gridTemplateColumns = `repeat(${trimmedWidth}, ${cellSize}px)`;
     gridElement.style.gridTemplateRows = `repeat(${trimmedHeight}, ${cellSize}px)`;
@@ -636,7 +646,6 @@ function displayGrid(gridData) {
     container.appendChild(gridElement);
 }
 
-
 function trimGrid(grid) {
     if (!grid || grid.length === 0 || !grid[0] || grid[0].length === 0) return [[]];
 
@@ -663,11 +672,3 @@ function trimGrid(grid) {
     }
     return (trimmed.length > 0 && trimmed[0] && trimmed[0].length > 0) ? trimmed : [[]];
 }
-
-// DLXNode class and related functions (kept for completeness, not primary solver)
-class DLXNode { constructor() { this.L = this.R = this.U = this.D = this.C = this; this.S = 0; this.N = ''; } }
-function createDLXMatrix() { console.warn("DLX Matrix creation not fully utilized by current solver."); return null; }
-function searchDLX() { console.warn("DLX search not fully utilized."); return false; }
-function cover() {}
-function uncover() {}
-function chooseColumn() {}
